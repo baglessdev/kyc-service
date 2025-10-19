@@ -319,6 +319,89 @@ Response:
 }
 ```
 
+#### Refresh Access Token
+```http
+POST /api/v1/verifications/{verificationId}/refresh-token
+
+Response:
+{
+  "accessToken": "new_sdk_access_token",
+  "expiresAt": "2025-10-19T14:00:00Z"
+}
+```
+
+#### Resubmit Verification
+```http
+POST /api/v1/verifications/{verificationId}/resubmit
+
+Response:
+{
+  "accessToken": "new_sdk_access_token",
+  "expiresAt": "2025-10-19T14:00:00Z"
+}
+```
+
+### Error Responses
+
+All endpoints return consistent error responses:
+
+```http
+{
+  "statusCode": 404,
+  "timestamp": "2025-10-19T12:00:00.000Z",
+  "path": "/api/v1/verifications/ver_123",
+  "method": "GET",
+  "error": "NotFoundException",
+  "message": "Verification not found"
+}
+```
+
+Common status codes:
+- `201 Created` - Resource successfully created
+- `200 OK` - Request successful
+- `400 Bad Request` - Invalid input or business logic violation
+- `404 Not Found` - Resource not found
+- `409 Conflict` - Resource conflict (e.g., active verification exists)
+- `500 Internal Server Error` - Unexpected server error
+
+### Webhook Endpoints
+
+#### Receive Sumsub Webhook
+```http
+POST /api/v1/webhooks/sumsub
+Content-Type: application/json
+X-Payload-Digest: <hmac-sha256-signature>
+
+{
+  "applicantId": "sumsub_applicant_123",
+  "inspectionId": "inspection_123",
+  "type": "applicantReviewed",
+  "reviewStatus": "completed",
+  "reviewResult": {
+    "reviewAnswer": "GREEN",
+    "rejectLabels": [],
+    "moderationComment": "All checks passed"
+  }
+}
+
+Response:
+{
+  "success": true
+}
+```
+
+**Webhook Event Types:**
+- `applicantCreated` - Applicant profile created
+- `applicantPending` - User submitted documents for review
+- `applicantReviewed` - Sumsub completed review (GREEN/RED)
+- `applicantReset` - Applicant reset for resubmission
+- `applicantOnHold` - Review on hold (additional info needed)
+
+**Security:**
+- All webhooks must include `X-Payload-Digest` header with HMAC-SHA256 signature
+- Signature is verified using `SUMSUB_WEBHOOK_SECRET`
+- Invalid signatures return `401 Unauthorized`
+
 ## Sumsub Integration
 
 This service integrates with Sumsub for identity verification. You'll need:
@@ -366,18 +449,21 @@ https://your-domain.com/api/v1/webhooks/sumsub
   - [x] ID generator utility
   - [x] Unit tests (48 tests passing)
 
-- [ ] Phase 5: API Endpoints
-  - [ ] Verification controller
-  - [ ] Request validation
-  - [ ] Error handling
+- [x] Phase 5: API Endpoints
+  - [x] Verification controller with REST endpoints
+  - [x] Request validation (class-validator DTOs)
+  - [x] Error handling (global exception filter)
+  - [x] Controller unit tests (11 tests passing)
 
-- [ ] Phase 6: Webhook Handler
-  - [ ] Webhook controller
-  - [ ] Signature verification
-  - [ ] Status update logic
+- [x] Phase 6: Webhook Handler
+  - [x] Webhook controller for Sumsub callbacks
+  - [x] HMAC-SHA256 signature verification
+  - [x] Webhook processing service (status updates)
+  - [x] Webhook event audit storage
+  - [x] Unit tests (12 tests passing)
 
 - [ ] Phase 7: Testing & Documentation
-  - [x] Unit tests for business logic (48 tests)
+  - [x] Unit tests for business logic (71 tests passing)
   - [ ] Integration tests (E2E)
   - [ ] API documentation (Swagger)
 
