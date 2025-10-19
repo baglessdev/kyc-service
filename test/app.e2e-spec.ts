@@ -3,23 +3,27 @@ import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { AppModule } from './../src/app.module';
+import { TestAppHelper } from './helpers/test-app.helper';
 
-describe('AppController (e2e)', () => {
-  let app: INestApplication<App>;
+describe('Health Check (e2e)', () => {
+  let app: INestApplication;
 
-  beforeEach(async () => {
-    const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [AppModule],
-    }).compile();
-
-    app = moduleFixture.createNestApplication();
-    await app.init();
+  beforeAll(async () => {
+    app = await TestAppHelper.createTestApp();
   });
 
-  it('/ (GET)', () => {
+  afterAll(async () => {
+    await TestAppHelper.closeTestApp();
+  });
+
+  it('/health (GET) should return health status', () => {
     return request(app.getHttpServer())
-      .get('/')
+      .get('/health')
       .expect(200)
-      .expect('Hello World!');
+      .expect((res) => {
+        expect(res.body).toHaveProperty('status', 'ok');
+        expect(res.body).toHaveProperty('timestamp');
+        expect(res.body).toHaveProperty('service', 'kyc-service');
+      });
   });
 });
