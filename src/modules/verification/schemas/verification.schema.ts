@@ -22,6 +22,7 @@ export class Verification {
 
   @Prop({
     required: true,
+    type: String,
     enum: Object.values(VerificationStatus),
     index: true,
   })

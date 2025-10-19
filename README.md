@@ -357,10 +357,14 @@ https://your-domain.com/api/v1/webhooks/sumsub
   - [x] Get applicant status API
   - [x] Reset applicant API (for RETRY cases)
 
-- [ ] Phase 4: Core Verification Service
-  - [ ] Repositories (Applicant, Verification)
-  - [ ] Verification service logic
-  - [ ] State management
+- [x] Phase 4: Core Verification Service
+  - [x] Applicant repository (CRUD operations)
+  - [x] Verification repository (status management, queries)
+  - [x] Verification service (initiate, status, refresh token, resubmit)
+  - [x] State management service (transition validation)
+  - [x] DTOs with validation
+  - [x] ID generator utility
+  - [x] Unit tests (48 tests passing)
 
 - [ ] Phase 5: API Endpoints
   - [ ] Verification controller
@@ -373,8 +377,8 @@ https://your-domain.com/api/v1/webhooks/sumsub
   - [ ] Status update logic
 
 - [ ] Phase 7: Testing & Documentation
-  - [ ] Unit tests
-  - [ ] Integration tests
+  - [x] Unit tests for business logic (48 tests)
+  - [ ] Integration tests (E2E)
   - [ ] API documentation (Swagger)
 
 ## License
