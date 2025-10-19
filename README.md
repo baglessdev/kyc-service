@@ -343,11 +343,11 @@ https://your-domain.com/api/v1/webhooks/sumsub
   - [x] Environment configuration
   - [x] Global validation pipes
 
-- [ ] Phase 2: Domain Models & Schemas
-  - [ ] Create enums (VerificationStatus, DocumentType)
-  - [ ] Applicant schema
-  - [ ] Verification schema
-  - [ ] Webhook event schema
+- [x] Phase 2: Domain Models & Schemas
+  - [x] Create enums (VerificationStatus, DocumentType, ReviewAnswer, RejectType)
+  - [x] Applicant schema with indexes
+  - [x] Verification schema with embedded documents
+  - [x] Webhook event schema for audit
 
 - [ ] Phase 3: Sumsub Integration
   - [ ] Authentication & signature generation
