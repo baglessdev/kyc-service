@@ -242,6 +242,51 @@ npm run start:debug
 
 The service will be available at `http://localhost:3000`
 
+### Docker Setup
+
+The service can be run using Docker for both development and production environments. See [Docker Guide](docs/DOCKER.md) for comprehensive instructions.
+
+#### Quick Start with Docker
+
+**Option 1: MongoDB Only (Recommended for development)**
+```bash
+# Start MongoDB and Mongo Express
+docker-compose -f docker-compose.dev.yml up -d
+
+# Run app locally
+npm run start:dev
+
+# Access Mongo Express UI
+open http://localhost:8081
+# Credentials: admin / admin123
+```
+
+**Option 2: Full Stack (Production setup)**
+```bash
+# Copy environment file
+cp .env.example .env
+
+# Start all services
+docker-compose up -d
+
+# Check health
+curl http://localhost:3000/health
+
+# View logs
+docker-compose logs -f
+```
+
+**Clean up:**
+```bash
+# Development
+docker-compose -f docker-compose.dev.yml down
+
+# Production
+docker-compose down
+```
+
+For detailed Docker documentation including troubleshooting, production deployment, and advanced usage, see [docs/DOCKER.md](docs/DOCKER.md).
+
 ### Build
 
 ```bash
@@ -462,10 +507,19 @@ https://your-domain.com/api/v1/webhooks/sumsub
   - [x] Webhook event audit storage
   - [x] Unit tests (12 tests passing)
 
-- [ ] Phase 7: Testing & Documentation
+- [x] Phase 7: Testing & Documentation
   - [x] Unit tests for business logic (71 tests passing)
-  - [ ] Integration tests (E2E)
+  - [x] E2E testing infrastructure (21 E2E tests)
+  - [x] E2E testing documentation (docs/E2E_TESTING.md)
   - [ ] API documentation (Swagger)
+
+- [x] Phase 8: Docker & Deployment
+  - [x] Multi-stage Dockerfile for production
+  - [x] Docker Compose for production setup
+  - [x] Docker Compose for development (MongoDB only)
+  - [x] .dockerignore file
+  - [x] Docker documentation (docs/DOCKER.md)
+  - [x] Environment configuration (.env.example)
 
 ## License
 
