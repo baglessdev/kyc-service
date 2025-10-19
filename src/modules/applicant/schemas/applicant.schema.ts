@@ -6,7 +6,7 @@ export class Applicant {
   @Prop({ required: true, unique: true, index: true })
   userId: string;
 
-  @Prop({ index: true, sparse: true })
+  @Prop({ sparse: true })
   externalApplicantId?: string;
 
   @Prop({ required: true })
@@ -48,5 +48,6 @@ export type ApplicantDocument = Applicant & Document;
 export const ApplicantSchema = SchemaFactory.createForClass(Applicant);
 
 // Additional indexes
+ApplicantSchema.index({ externalApplicantId: 1 }, { sparse: true });
 ApplicantSchema.index({ email: 1 });
 ApplicantSchema.index({ createdAt: -1 });

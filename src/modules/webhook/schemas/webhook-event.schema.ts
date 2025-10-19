@@ -14,7 +14,7 @@ export class WebhookEvent {
 
   @Prop({
     type: {
-      processed: { type: Boolean, default: false, index: true },
+      processed: { type: Boolean, default: false },
       processedAt: { type: Date },
       attempts: { type: Number, default: 0 },
       lastAttemptAt: { type: Date },

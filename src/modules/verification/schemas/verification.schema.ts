@@ -28,7 +28,7 @@ export class Verification {
   })
   status: VerificationStatus;
 
-  @Prop({ index: true })
+  @Prop()
   externalApplicantId?: string;
 
   @Prop()
