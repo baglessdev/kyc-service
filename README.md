@@ -349,11 +349,13 @@ https://your-domain.com/api/v1/webhooks/sumsub
   - [x] Verification schema with embedded documents
   - [x] Webhook event schema for audit
 
-- [ ] Phase 3: Sumsub Integration
-  - [ ] Authentication & signature generation
-  - [ ] Create applicant API
-  - [ ] Generate access token API
-  - [ ] Get applicant status API
+- [x] Phase 3: Sumsub Integration
+  - [x] Authentication & signature generation (HMAC-SHA256)
+  - [x] Sumsub HTTP client with retry logic and exponential backoff
+  - [x] Create applicant API
+  - [x] Generate access token API
+  - [x] Get applicant status API
+  - [x] Reset applicant API (for RETRY cases)
 
 - [ ] Phase 4: Core Verification Service
   - [ ] Repositories (Applicant, Verification)
