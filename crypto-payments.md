@@ -34,62 +34,340 @@ Token Forum is a cryptocurrency/blockchain platform that combines AI-powered cha
 
 ## Requirements
 
-### 1. Privy Integration (or Similar: Dynamic, Magic)
+### 1. Privy Integration
 
 #### Description
-Replace or augment the current wallet connection system (RainbowKit + Wagmi for EVM, Solana Wallet Adapter) with Privy to provide a unified, user-friendly authentication and wallet management experience.
+Privy is a wallet-as-a-service platform that provides embedded wallets and seamless authentication for Web3 applications. We will integrate Privy to replace the current fragmented wallet connection system (RainbowKit + Wagmi for EVM, Solana Wallet Adapter) with a unified, user-friendly solution that enables multi-chain crypto payments.
 
-#### Key Features
-- **Embedded Wallets**: Users can create wallets without installing browser extensions
-- **Social Login**: Wallet creation via Twitter/Google/email (complements existing Twitter OAuth)
-- **Multi-chain Support**: Single interface for both EVM (Base, Ethereum, Sepolia) and Solana chains
-- **Seamless Onboarding**: Reduce friction for non-crypto users while maintaining support for external wallets
+#### Why Privy?
+- **Best multi-chain support**: Native support for both EVM chains (Base, Ethereum) and Solana in a single SDK
+- **Embedded wallets**: Users can create wallets without installing MetaMask, Phantom, or other browser extensions
+- **Social login integration**: Works seamlessly with existing Twitter OAuth authentication
+- **Mature SDK**: Production-ready with robust documentation and support
+- **User experience focus**: Designed for non-crypto natives with progressive disclosure of Web3 complexity
 
-#### Implementation Options
+#### Core Capabilities
 
-**Option A: Privy (Recommended)**
-- Pros: Best multi-chain support, embedded wallets, social login, mature SDK
-- Cons: Monthly fee based on active users
-- Best for: Production deployment with focus on UX
+**1. Unified Authentication**
+Privy consolidates authentication across Web2 and Web3:
+- Social logins (Twitter, Google, Email) that Token Forum already uses
+- External wallet connections (MetaMask, Phantom, Coinbase Wallet, WalletConnect)
+- Single sign-on experience across all methods
+- Automatic wallet creation for social login users
 
-**Option B: Dynamic**
-- Pros: Similar feature set to Privy, competitive pricing
-- Cons: Slightly less mature ecosystem
-- Best for: Alternative if Privy pricing is concern
+**2. Multi-Chain Wallet Management**
+When a user authenticates via Privy (e.g., Twitter login):
+- **EVM Wallet Created**: Generates an Ethereum-compatible address (0x...)
+  - Works on Base, Ethereum, Sepolia
+  - Single address for all EVM-compatible chains
+  - Uses same private key, different chain contexts
+- **Solana Wallet Created**: Generates a separate Solana address (base58 format)
+  - Independent from EVM wallet
+  - Optimized for Solana's account model
+- **Key Management**: Private keys encrypted and stored securely by Privy
+  - User never sees or manages seed phrases
+  - Recovery via social login credentials
+  - No MetaMask or hardware wallet required
 
-**Option C: Magic**
-- Pros: Email-based authentication, simpler implementation
-- Cons: Less Web3-native, limited multi-chain support
-- Best for: Simpler use cases with email focus
+**3. Transaction Signing**
+Privy handles signing for multi-chain payments:
+- **EVM Transaction Signing**:
+  - User approves payment on Base → Privy signs with EVM wallet
+  - User approves payment on Ethereum → Same wallet, different chain
+  - Automatic chain switching (Base ↔ Ethereum)
+- **Solana Transaction Signing**:
+  - User approves payment on Solana → Privy signs with Solana wallet
+  - Native Solana transaction format
+  - No bridge or conversion needed
+- **Unified UX**: Same approval modal regardless of chain
 
-#### What Needs to Be Done
+**4. External Wallet Support**
+Privy supports existing user-owned wallets in addition to embedded wallets:
+- **EVM Wallets**: MetaMask, Coinbase Wallet, Rainbow, Trust Wallet, WalletConnect (300+ wallets)
+- **Solana Wallets**: Phantom, Solflare, Backpack, any Solana-compatible wallet
+- **User Flexibility**: Users can connect both embedded AND external wallets to same account
+- **Wallet Selection**: At payment time, user chooses which wallet to use for transaction
+- **Self-Custody**: External wallet users maintain full control of their private keys
+
+#### How Privy Enables Multi-Chain Payments
+
+**The Problem Without Privy:**
+```
+User wants to pay on Base:
+  → Must have MetaMask installed
+  → Must create/import wallet with seed phrase
+  → Must add Base network manually
+  → Must fund wallet with ETH for gas
+
+User wants to pay on Solana:
+  → Must ALSO have Phantom installed
+  → Must create DIFFERENT wallet with different seed phrase
+  → Must manage two sets of credentials
+  → Confusing and error-prone
+```
+
+**The Solution With Privy:**
+```
+User logs in with Twitter (once):
+  → Privy automatically creates:
+     - EVM wallet: 0xABC123... (works on Base, Ethereum, Sepolia)
+     - Solana wallet: 8XyZ9a... (works on Solana)
+  → User stored in database:
+     UserWallet { userId, address: "0xABC123", type: EVM }
+     UserWallet { userId, address: "8XyZ9a", type: SOLANA }
+
+User wants to pay on Base:
+  → Frontend uses Privy's EVM wallet
+  → Privy switches to Base chain (chain ID 8453)
+  → User approves → Privy signs → Transaction sent to Base
+
+User wants to pay on Solana:
+  → Frontend uses Privy's Solana wallet
+  → No chain switching needed
+  → User approves → Privy signs → Transaction sent to Solana
+
+All with ONE login, ZERO seed phrases, ZERO wallet installations
+```
+
+#### Integration Architecture
+
+**Frontend Layer (token-forum-frontend):**
+```
+Current State:
+┌─────────────────────────────────────┐
+│  WagmiConnectProvider               │
+│  (RainbowKit for EVM)               │
+│  - Ethereum, Base, Sepolia          │
+└─────────────────────────────────────┘
+┌─────────────────────────────────────┐
+│  SolanaProvider                     │
+│  (Solana Wallet Adapter)            │
+│  - Solana                           │
+└─────────────────────────────────────┘
+  Two separate systems, poor UX
+
+Future State with Privy:
+┌─────────────────────────────────────┐
+│  PrivyProvider                      │
+│  - All chains unified               │
+│  - Single authentication            │
+│  - Embedded + External wallets      │
+│                                     │
+│  Auto-generates:                    │
+│    • EVM wallet (Base, Ethereum)    │
+│    • Solana wallet                  │
+└─────────────────────────────────────┘
+  One system, excellent UX
+```
+
+**Authentication Flow:**
+```
+1. User clicks "Connect Wallet"
+2. Privy modal shows options:
+   - Continue with Twitter ← User selects this
+   - Continue with Email
+   - Connect MetaMask
+   - Connect Phantom
+3. Twitter OAuth completes
+4. Privy generates wallets in background:
+   - EVM: 0xABC123...
+   - Solana: 8XyZ9a...
+5. Backend receives Privy auth token
+6. Backend verifies token with Privy API
+7. Backend stores wallet addresses in UserWallet table
+8. User is authenticated and ready to pay on any chain
+```
+
+**Payment Execution Flow:**
+
+**Scenario A: User pays on Base**
+```
+1. User selects: Base chain + USDC token
+2. Backend generates quote: 29.99 USDC
+3. Frontend prepares Base transaction:
+   - Get Privy's EVM wallet
+   - Check current chain
+   - If not Base (8453), switch to Base
+   - Prepare USDC transfer transaction
+4. User clicks "Confirm & Pay"
+5. Privy modal appears:
+   "Approve transaction on Base?
+    Send: 29.99 USDC
+    To: 0x742d...f44e
+    Gas: ~$0.01"
+6. User approves
+7. Privy signs transaction with EVM wallet private key
+8. Transaction broadcast to Base RPC
+9. Transaction hash returned: 0x8f3c...
+10. Frontend sends hash to backend for monitoring
+```
+
+**Scenario B: User pays on Solana (same user, different chain)**
+```
+1. User selects: Solana chain + USDC token
+2. Backend generates quote: 29.99 USDC
+3. Frontend prepares Solana transaction:
+   - Get Privy's Solana wallet
+   - Prepare SPL token transfer instruction
+4. User clicks "Confirm & Pay"
+5. Privy modal appears:
+   "Approve transaction on Solana?
+    Send: 29.99 USDC
+    To: 8Xy...Z9a
+    Fee: ~$0.0001"
+6. User approves
+7. Privy signs transaction with Solana wallet private key
+8. Transaction broadcast to Solana RPC
+9. Transaction signature returned
+10. Frontend sends signature to backend for monitoring
+```
+
+#### Technical Implementation
 
 **Frontend Changes:**
-- Replace `WagmiConnectProvider.tsx` with Privy provider
-- Replace `SolanaProvider.tsx` with Privy Solana integration
-- Update `WalletConnectButton` component to use Privy modal
-- Create new components for Privy authentication flow
-- Update wallet state management to use Privy hooks
+
+**1. Replace Existing Providers**
+- Remove `WagmiConnectProvider.tsx` and its RainbowKit dependencies
+- Remove `SolanaProvider.tsx` and Solana Wallet Adapter dependencies
+- Install Privy SDK: `@privy-io/react-auth`, `@privy-io/expo`
+- Create new `PrivyProvider.tsx` wrapping entire app
+
+**2. Update Wallet Components**
+- Modify `WalletConnectButton` to use Privy's `useLogin()` hook
+- Remove MetaMask/Phantom specific logic
+- Add Privy modal styling to match Token Forum design
+- Display both EVM and Solana addresses in UI
+
+**3. Payment Flow Integration**
+- Access wallets via `usePrivy()` hook:
+  - `const { user, wallets } = usePrivy()`
+  - `const evmWallet = wallets.find(w => w.chainType === 'ethereum')`
+  - `const solanaWallet = wallets.find(w => w.chainType === 'solana')`
+- For Base payments: Use `evmWallet.switchChain(8453)` then `evmWallet.getEthersProvider()`
+- For Solana payments: Use `solanaWallet.getConnection()`
 
 **Backend Changes:**
-- Install Privy server-side SDK
-- Update auth controller to handle Privy authentication tokens
-- Extend JWT generation to include Privy user metadata
-- Update `UserWallet` service to support Privy wallet addresses
-- Create webhook endpoint for Privy events (optional)
 
-**Configuration:**
-- Set up Privy application in dashboard
-- Configure supported chains and auth methods
-- Set up environment variables for Privy app ID and secret
-- Configure CORS and allowed origins
+**1. Privy Server SDK Setup**
+- Install `@privy-io/server-auth` package
+- Configure Privy app ID and secret in environment variables
+- Initialize Privy client in auth service
 
-**Testing:**
-- Test embedded wallet creation flow
-- Test external wallet connection flow
-- Verify multi-chain wallet generation
-- Test authentication token validation
-- Verify wallet linking/unlinking
+**2. Token Verification**
+- When frontend sends Privy auth token
+- Backend verifies token authenticity with Privy API
+- Extract wallet addresses from verified token
+- Store/update in UserWallet table
+
+**3. Wallet Address Storage**
+- On first login, create UserWallet records:
+  - One for EVM address (type: EVM)
+  - One for Solana address (type: SOLANA)
+- Link both to same userId
+- Use these addresses for payment verification
+
+**Configuration Requirements:**
+
+**1. Privy Dashboard Setup**
+- Create Privy application at https://dashboard.privy.io
+- Configure allowed authentication methods:
+  - Twitter (primary)
+  - Email (secondary)
+  - Google (optional)
+- Configure supported chains:
+  - Ethereum Mainnet
+  - Base
+  - Sepolia (for testing)
+  - Solana Mainnet
+  - Solana Devnet (for testing)
+- Set allowed origins: token.forum, dev.token.forum
+
+**2. Environment Variables**
+```
+Frontend (.env):
+NEXT_PUBLIC_PRIVY_APP_ID=<app-id-from-dashboard>
+
+Backend (.env):
+PRIVY_APP_ID=<app-id-from-dashboard>
+PRIVY_APP_SECRET=<secret-from-dashboard>
+```
+
+**3. CORS Configuration**
+- Add Privy domains to backend CORS allowlist
+- Ensure cookies work across Privy auth flow
+
+#### Multi-Chain Payment Benefits
+
+**1. Unified User Experience**
+- User logs in once, gets wallets for all chains
+- No need to install multiple wallet apps
+- No managing multiple seed phrases
+- Same approval flow regardless of chain
+
+**2. Lower Barriers to Entry**
+- Non-crypto users can pay with crypto without learning about wallets
+- Existing users on Base can easily try Solana payments
+- Social recovery (via Twitter/email) instead of seed phrases
+
+**3. Flexible Payment Options**
+- User can pay on cheapest chain at the moment
+- Base for low fees on EVM
+- Solana for ultra-low fees
+- Ethereum for maximum security
+- System supports all without user complexity
+
+**4. Future Extensibility**
+- Easy to add more EVM chains (Polygon, Arbitrum, Optimism)
+- Easy to add more Solana-based payments
+- All use same Privy infrastructure
+
+#### Implementation Steps
+
+**Week 1: Privy Foundation**
+1. Create Privy account and configure app
+2. Install Privy SDKs in frontend and backend
+3. Create PrivyProvider wrapper component
+4. Replace authentication flow to use Privy
+5. Test Twitter login → wallet creation
+6. Verify wallet addresses stored correctly
+
+**Week 2: Multi-Chain Wallet Testing**
+7. Test EVM wallet on Base network
+8. Test EVM wallet on Ethereum network
+9. Test Solana wallet
+10. Verify chain switching works
+11. Test external wallet connections (MetaMask, Phantom)
+12. Ensure backward compatibility
+
+**Week 3: Payment Integration**
+13. Integrate Privy wallets with payment quote system
+14. Implement transaction signing on Base
+15. Implement transaction signing on Solana
+16. Add error handling for failed transactions
+17. Test end-to-end payment on both chains
+
+#### Testing Checklist
+
+**Authentication:**
+- [ ] Twitter login creates both EVM and Solana wallets
+- [ ] Email login creates both wallets
+- [ ] External MetaMask connection works
+- [ ] External Phantom connection works
+- [ ] Wallet addresses stored in database correctly
+
+**Multi-Chain Functionality:**
+- [ ] User can switch between Base and Ethereum
+- [ ] User can pay on Base with USDC
+- [ ] User can pay on Base with ETH
+- [ ] User can pay on Solana with USDC
+- [ ] User can pay on Solana with SOL
+- [ ] Chain switching prompt appears when needed
+
+**Recovery & Security:**
+- [ ] User can logout and login to recover wallets
+- [ ] Wallet recovery via Twitter works
+- [ ] Private keys never exposed to frontend
+- [ ] Auth token verification works on backend
 
 ---
 
@@ -175,13 +453,678 @@ Implement intelligent routing of incoming crypto payments to designated treasury
 - Best for: High volume, security conscious
 - Complexity: Requires rotation logic
 
-**Option C: Smart Contract Vault**
+**Option C: Smart Contract Vault (RECOMMENDED)**
 - Payments go to smart contract
 - Auto-forwards to configured recipients
 - Best for: Maximum transparency and automation
 - Complexity: Requires smart contract deployment
 
 **Recommendation: Start with Option A, evolve to Option C**
+
+---
+
+#### Detailed Implementation: Smart Contract Vault
+
+**Overview:**
+Smart Contract Vaults provide an on-chain, trustless solution for receiving and managing crypto payments. Instead of directing payments to traditional externally-owned accounts (EOAs), payments are routed to smart contracts that automatically handle fund management, routing, and distribution according to pre-programmed rules. This approach offers maximum transparency, auditability, and automation while removing single points of trust.
+
+**Core Concept:**
+When a user makes a payment, they send cryptocurrency directly to a smart contract address rather than a regular wallet address. The smart contract is programmed with business logic that determines:
+1. Where funds should be stored
+2. Who has access to withdraw funds
+3. What conditions must be met for withdrawals
+4. Optional automatic forwarding rules
+
+**Architecture Components:**
+
+**1. Payment Vault Contract (per chain)**
+```
+Primary responsibilities:
+- Receive incoming payments from users
+- Emit events for backend monitoring
+- Store funds temporarily or permanently
+- Execute withdrawals based on permissions
+- Track payment metadata on-chain
+- Support multi-signature withdrawals
+```
+
+**2. Payment Splitter Contract (optional, per project)**
+```
+Responsibilities:
+- Automatically split incoming payments to multiple recipients
+- Configurable split percentages
+- Immediate or batched distribution
+- Gas-efficient bulk transfers
+- Immutable audit trail
+```
+
+**3. Treasury Contract (multi-chain)**
+```
+Responsibilities:
+- Long-term storage of platform funds
+- Multi-signature requirement for withdrawals
+- Time-locks for large withdrawals
+- Role-based access control (admin, treasurer, operator)
+- Integration with governance (future DAO)
+```
+
+---
+
+**Smart Contract Types:**
+
+**Type 1: Simple Receiving Vault**
+```
+Purpose: Receive and hold funds until manual withdrawal
+
+Key Features:
+- Accept payments from any address
+- Emit PaymentReceived event with metadata
+- Only authorized addresses can withdraw
+- Track payment amounts per user
+- Support emergency pause functionality
+- Multi-signature withdrawal requirement
+
+When to Use:
+- Initial implementation
+- Projects with manual treasury management
+- Simple payment routing needs
+
+Gas Costs:
+- User payment: ~30,000-50,000 gas (Base: ~$0.01-0.02)
+- Admin withdrawal: ~45,000 gas
+```
+
+**Type 2: Auto-Forwarding Vault**
+```
+Purpose: Automatically forward payments to destination(s) upon receipt
+
+Key Features:
+- Receive payment
+- Immediately forward to configured address(es)
+- Emit events for tracking
+- No funds stored in contract
+- Single or multiple forwarding targets
+- Configurable forwarding delay
+
+When to Use:
+- When funds should go directly to cold storage
+- Minimize contract balance for security
+- Simple 1:1 or 1:many routing
+
+Gas Costs:
+- User payment: ~60,000-100,000 gas (includes forwarding)
+- Higher cost passed to user, but fully automated
+```
+
+**Type 3: Payment Splitter Vault**
+```
+Purpose: Split payments among multiple stakeholders automatically
+
+Key Features:
+- Accept payment
+- Split according to configured percentages
+- Send portions to multiple recipients
+- Support for 2-10 recipients typically
+- Configurable split ratios (can be updated by admin)
+- Batch processing option to save gas
+
+When to Use:
+- Revenue sharing scenarios
+- Automated profit distribution
+- Team payment splits
+- Platform fee collection
+
+Gas Costs:
+- User payment: ~80,000-150,000 gas (depends on recipient count)
+- Split to 3 recipients: ~100,000 gas (~$0.03 on Base)
+- Split to 5 recipients: ~140,000 gas (~$0.04 on Base)
+```
+
+**Type 4: Time-Locked Treasury Vault**
+```
+Purpose: Secure long-term storage with withdrawal restrictions
+
+Key Features:
+- Multi-signature requirement (e.g., 3 of 5 signers)
+- Time-lock on withdrawals (e.g., 48-hour delay)
+- Maximum withdrawal limits per period
+- Role-based permissions (proposer, approver, executor)
+- Emergency recovery mechanisms
+- Upgrade capability via proxy pattern
+
+When to Use:
+- Main treasury storage
+- High-value fund management
+- DAO-controlled funds
+- Long-term reserves
+
+Gas Costs:
+- Deposit: ~50,000 gas
+- Withdrawal proposal: ~80,000 gas
+- Withdrawal execution: ~120,000 gas
+- Higher security = higher gas costs
+```
+
+---
+
+**Implementation Details:**
+
+**Step 1: Contract Development & Deployment**
+
+**Base Chain (EVM) Implementation:**
+- Language: Solidity 0.8.x
+- Framework: Hardhat or Foundry
+- Standards: OpenZeppelin contracts for security
+- Key Contracts:
+  - `PaymentVault.sol` - Main receiving vault
+  - `PaymentSplitter.sol` - Distribution logic (optional)
+  - `TreasuryVault.sol` - Secure storage with multisig
+- Testing: Comprehensive unit and integration tests
+- Audit: Professional security audit before mainnet deployment
+
+**Deployment Process:**
+1. Deploy contracts to Sepolia testnet first
+2. Test all payment flows thoroughly
+3. Get security audit completed
+4. Deploy to Base mainnet
+5. Verify contracts on BaseScan
+6. Transfer ownership to multi-sig wallet
+
+**Solana Implementation:**
+- Language: Rust (Anchor framework)
+- Key Programs:
+  - Payment Vault Program
+  - Payment Splitter Program (optional)
+  - Treasury Program with Squads multisig integration
+- Testing: Comprehensive Anchor tests on devnet
+- Deployment: Deploy to mainnet-beta after testing
+
+**Ethereum Implementation:**
+- Same as Base (EVM compatible)
+- Higher gas costs, but same functionality
+- Consider using Gnosis Safe for treasury
+
+---
+
+**Step 2: Smart Contract Features**
+
+**PaymentVault.sol Core Functions:**
+
+```
+Receive Payment:
+- Function: receive() or fallback()
+- Accepts ETH/native token payments
+- Accepts ERC20 token payments via transfer or approve/transferFrom
+- Validates payment amount meets minimum
+- Emits PaymentReceived event with:
+  - Payer address
+  - Amount
+  - Token address (or 0x0 for native)
+  - Timestamp
+  - Quote ID (passed as calldata or memo)
+  - Project ID
+
+Record Payment:
+- Store payment metadata in contract state
+- Track cumulative amounts per user
+- Track cumulative amounts per project
+- Enable on-chain verification
+
+Withdraw Funds:
+- Restricted to authorized addresses
+- Multi-signature requirement option
+- Maximum withdrawal limits
+- Time-lock delays for large amounts
+- Emit WithdrawalExecuted event
+
+Emergency Functions:
+- Pause/unpause contract
+- Emergency withdrawal to recovery address
+- Upgrade contract via proxy
+- Only callable by emergency admin
+```
+
+**PaymentSplitter.sol Core Functions:**
+
+```
+Configure Splits:
+- Function: setSplits(address[] recipients, uint256[] percentages)
+- Only callable by contract owner/admin
+- Validates percentages sum to 100%
+- Validates recipient addresses
+- Emits SplitConfigurationUpdated event
+
+Execute Split:
+- Called automatically on payment receipt OR
+- Called manually by admin for batch processing
+- Calculates amounts per recipient
+- Executes transfers to all recipients
+- Handles rounding errors (send remainder to first recipient)
+- Emits PaymentSplit event for each recipient
+
+Query Functions:
+- getCurrentSplits() - view current configuration
+- getPendingAmount() - amount waiting to be split
+- getTotalDistributed() - historical total
+- getDistributedToRecipient(address) - amount sent to specific recipient
+```
+
+**TreasuryVault.sol Core Functions:**
+
+```
+Multi-Signature Operations:
+- Proposal creation: proposeWithdrawal(amount, recipient, token)
+- Approval: approveWithdrawal(proposalId)
+- Execution: executeWithdrawal(proposalId)
+- Requires M of N signatures (e.g., 3 of 5)
+- Time-lock between proposal and execution
+
+Role Management:
+- Roles: ADMIN, PROPOSER, APPROVER, EXECUTOR
+- Grant/revoke roles via multi-sig
+- Emergency admin for critical situations
+
+Balance Tracking:
+- Track balance per token
+- Historical balance snapshots
+- Reconciliation data for accounting
+```
+
+---
+
+**Step 3: Backend Integration**
+
+**Configuration Storage (Database):**
+
+New `SmartVaultConfig` model:
+```
+Fields:
+- id: String
+- chain: Chain enum
+- vaultType: VaultType enum (RECEIVING, FORWARDING, SPLITTER, TREASURY)
+- contractAddress: String
+- deployedAt: DateTime
+- abiVersion: String
+- active: Boolean
+- metadata: JSON (contract-specific configuration)
+```
+
+**Event Monitoring Service:**
+
+Create `SmartVaultMonitoringService`:
+```
+Responsibilities:
+- Subscribe to smart contract events via websockets or polling
+- Listen for PaymentReceived events
+- Extract payment details (payer, amount, token, quoteId)
+- Match to existing CryptoPayment records by quoteId
+- Update payment status in database
+- Trigger access granting workflow
+
+EVM Implementation:
+- Use ethers.js contract.on('PaymentReceived', ...)
+- Filter events by contract address
+- Parse event logs for payment data
+- Verify transaction finality (confirmations)
+
+Solana Implementation:
+- Subscribe to program logs via websocket
+- Parse transaction instructions
+- Match by memo field containing quoteId
+- Verify transaction finality (32 confirmations)
+```
+
+**Payment Quote Modification:**
+
+Update quote generation to provide vault address:
+```
+Current Flow:
+- User requests quote
+- Backend returns: amount, token, receiving wallet address
+
+New Flow:
+- User requests quote
+- Backend determines appropriate vault based on:
+  - Project (project-specific vault or platform vault)
+  - Chain (each chain has different vault)
+  - Token (ERC20 vs native token handling)
+- Backend returns: amount, token, vault contract address, quoteId
+- Frontend encodes quoteId into transaction memo/data field
+```
+
+**Transaction Verification Service:**
+
+Enhanced verification for vault payments:
+```
+Steps:
+1. Monitor blockchain for transactions to vault address
+2. Read PaymentReceived event from contract
+3. Extract quoteId from event
+4. Match to CryptoPayment record
+5. Verify amount matches quote (within tolerance)
+6. Verify token matches quote
+7. Wait for required confirmations
+8. Update payment status to CONFIRMED
+9. Trigger distribution if configured
+```
+
+---
+
+**Step 4: Admin Interface for Vault Management**
+
+**Dashboard Components:**
+
+**Vault Overview:**
+- List all deployed vaults (per chain)
+- Current balance in each vault
+- Total received (all time)
+- Total withdrawn (all time)
+- Active status
+
+**Vault Configuration:**
+- Add new vault contract
+- Configure vault parameters:
+  - Authorized withdrawers
+  - Multi-sig requirements
+  - Time-lock periods
+  - Withdrawal limits
+- Test vault connection
+- View contract ABI
+
+**Withdrawal Management:**
+- View current vault balances
+- Propose withdrawal (if multi-sig)
+- Approve pending withdrawals
+- Execute approved withdrawals
+- View withdrawal history
+- Export withdrawal data
+
+**Splitter Configuration (for PaymentSplitter vaults):**
+- Configure recipient addresses
+- Set split percentages
+- Preview split calculations
+- Execute manual splits (if not automatic)
+- View distribution history
+
+**Monitoring & Alerts:**
+- Real-time event stream from vaults
+- Alerts for large deposits
+- Alerts for failed withdrawals
+- Balance threshold warnings
+- Gas price optimization suggestions
+
+---
+
+**Step 5: Security Measures**
+
+**Smart Contract Security:**
+
+1. **Access Control:**
+   - Use OpenZeppelin's AccessControl or Ownable
+   - Implement role-based permissions
+   - Separate roles for different operations
+   - Time-lock critical functions
+
+2. **Reentrancy Protection:**
+   - Use OpenZeppelin's ReentrancyGuard
+   - Follow checks-effects-interactions pattern
+   - Secure external calls
+
+3. **Integer Overflow/Underflow:**
+   - Solidity 0.8.x has built-in protection
+   - Still validate calculations explicitly
+   - Use SafeMath for older versions
+
+4. **Emergency Controls:**
+   - Pausable functionality
+   - Emergency withdrawal to safe address
+   - Circuit breakers for abnormal activity
+   - Upgrade capability via proxy pattern
+
+5. **Audit & Verification:**
+   - Professional security audit (required)
+   - Open source contracts
+   - Verified on Etherscan/BaseScan
+   - Bug bounty program
+
+**Operational Security:**
+
+1. **Multi-Signature Wallets:**
+   - Use Gnosis Safe (EVM) or Squads (Solana)
+   - Require 3 of 5 signatures for critical operations
+   - Distribute signing keys across team members
+   - Hardware wallet integration
+
+2. **Key Management:**
+   - Never store private keys in code or database
+   - Use hardware wallets for signing
+   - Separate keys for different roles
+   - Regular key rotation policy
+
+3. **Monitoring & Alerts:**
+   - 24/7 monitoring of vault balances
+   - Alerts for unexpected withdrawals
+   - Alerts for large deposits
+   - Daily balance reconciliation
+
+4. **Disaster Recovery:**
+   - Document recovery procedures
+   - Test recovery scenarios regularly
+   - Backup multi-sig recovery addresses
+   - Time-locked recovery mechanisms
+
+---
+
+**Step 6: User Experience Considerations**
+
+**For End Users (Payers):**
+
+**Transparent Destination:**
+- Display vault contract address clearly
+- Show "Verified Smart Contract" badge
+- Link to contract on blockchain explorer
+- Explain benefits of vault system
+
+**Gas Cost Communication:**
+- Show total transaction cost including gas
+- Compare costs: Simple wallet vs Vault vs Splitter vault
+- Recommend optimal vault type based on payment size
+- Display gas price and estimate
+
+**Transaction Data:**
+- Frontend automatically includes quoteId in transaction
+- For EVM: Encode quoteId in transaction data field
+- For Solana: Include quoteId in memo field
+- Users don't need to understand technical details
+
+**Confirmation & Receipts:**
+- Show transaction hash
+- Link to transaction on blockchain explorer
+- Display event emissions from contract
+- Show smart contract verification
+
+**For Admins:**
+
+**Deployment Dashboard:**
+- One-click deployment to testnet
+- Deploy to mainnet with confirmation
+- Automatic ABI storage
+- Contract verification automation
+
+**Configuration Interface:**
+- Visual configuration builder
+- Preview before saving changes
+- Test transactions on testnet
+- Rollback capability
+
+**Monitoring Tools:**
+- Real-time event monitoring
+- Balance tracking across all vaults
+- Withdrawal proposal management
+- Reconciliation reports
+
+---
+
+**Step 7: Advantages of Smart Contract Vaults**
+
+**Transparency:**
+- All transactions visible on blockchain
+- Public audit trail
+- Immutable payment records
+- Users can verify contract code
+
+**Automation:**
+- Automatic payment splitting
+- Triggered distributions
+- No manual fund forwarding
+- Reduced operational overhead
+
+**Security:**
+- Multi-signature protection
+- Time-locks on large withdrawals
+- Role-based access control
+- No single point of failure
+
+**Trust:**
+- Non-custodial (smart contract holds funds)
+- Verifiable business logic
+- Cannot be altered without notice
+- DAO governance ready (future)
+
+**Compliance:**
+- Complete on-chain records
+- Easy accounting reconciliation
+- Audit-friendly
+- Tax reporting simplified
+
+**Scalability:**
+- Handles unlimited payment volume
+- Parallel processing of multiple payments
+- No manual bottlenecks
+- Automated reconciliation
+
+---
+
+**Step 8: Gas Optimization Strategies**
+
+**For Payment Vault:**
+1. Minimal storage writes
+2. Pack variables efficiently
+3. Use events instead of storage where possible
+4. Batch operations when feasible
+5. Consider Layer 2 deployment (Base already is L2)
+
+**For Payment Splitter:**
+1. Limit recipient count (2-5 optimal)
+2. Consider batched splits (accumulate, then split)
+3. Use assembly for gas-intensive operations
+4. Optimize recipient iteration
+5. Cache frequently accessed data
+
+**For Users:**
+1. Recommend Base over Ethereum (lower gas)
+2. Show gas price trends
+3. Suggest optimal transaction timing
+4. Batch multiple payments if possible
+
+---
+
+**Step 9: Testing Strategy**
+
+**Smart Contract Tests:**
+- Unit tests for all functions
+- Integration tests for payment flows
+- Fuzz testing for edge cases
+- Gas consumption benchmarks
+- Upgrade testing (if using proxy)
+
+**Backend Integration Tests:**
+- Event monitoring accuracy
+- Quote matching reliability
+- Payment status updates
+- Error handling
+- Failover scenarios
+
+**End-to-End Tests:**
+- Complete payment flows on testnet
+- Multiple chains simultaneously
+- Different vault types
+- Large payment volumes
+- Concurrent users
+
+**Load Testing:**
+- High volume payment processing
+- Event monitoring under load
+- Database performance
+- RPC provider limits
+
+---
+
+**Step 10: Deployment Checklist**
+
+**Pre-Deployment:**
+- [ ] Smart contracts fully tested on testnet
+- [ ] Security audit completed and issues resolved
+- [ ] Gas optimization implemented
+- [ ] Multi-sig wallets configured
+- [ ] Admin team trained on vault management
+- [ ] Emergency procedures documented
+- [ ] Monitoring and alerts configured
+- [ ] Backend integration tested
+- [ ] Frontend UI completed and tested
+
+**Deployment:**
+- [ ] Deploy contracts to mainnet
+- [ ] Verify contracts on block explorer
+- [ ] Transfer ownership to multi-sig
+- [ ] Configure initial vault parameters
+- [ ] Test with small payment first
+- [ ] Monitor initial transactions closely
+- [ ] Enable for real users gradually
+
+**Post-Deployment:**
+- [ ] 24/7 monitoring active
+- [ ] Daily balance reconciliation
+- [ ] Weekly security reviews
+- [ ] Monthly gas optimization analysis
+- [ ] Quarterly security audits
+- [ ] User feedback collection
+- [ ] Performance metrics tracking
+
+---
+
+**Cost Analysis:**
+
+**Development Costs:**
+- Smart contract development: 2-3 weeks
+- Backend integration: 1-2 weeks
+- Frontend integration: 1 week
+- Testing: 1-2 weeks
+- Security audit: $10k-30k
+- Total timeline: 6-8 weeks
+
+**Operational Costs:**
+- Deployment gas (one-time):
+  - Base: ~$5-10 per contract
+  - Ethereum: ~$100-200 per contract
+  - Solana: ~$5-10 per program
+- Withdrawal gas (ongoing):
+  - Base: ~$0.01-0.05 per withdrawal
+  - Ethereum: ~$5-20 per withdrawal
+  - Solana: ~$0.0001 per withdrawal
+
+**User Costs:**
+- Simple vault payment:
+  - Base: +$0.01-0.02 vs direct wallet
+  - Ethereum: +$2-5 vs direct wallet
+  - Solana: +$0.0001 vs direct wallet
+- Splitter vault payment:
+  - Base: +$0.03-0.05 vs direct wallet
+  - Ethereum: +$10-20 vs direct wallet
+  - Solana: +$0.0005 vs direct wallet
+
+**Recommendation:**
+Start with Simple Receiving Vault on Base (lowest cost, simplest), then migrate to Payment Splitter Vault once volume justifies automation benefits.
 
 #### What Needs to Be Done
 
