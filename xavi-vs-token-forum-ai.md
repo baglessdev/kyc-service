@@ -1425,663 +1425,181 @@ const { results, errors } = await PromisePool.for(toolUses)
 
 ### Migration Phases
 
-#### Phase 1: Core AI Infrastructure (Week 1-2)
+#### Phase 1: Core AI Infrastructure
 **Objective:** Port XAVI's bot architecture without GameAgent limitations
 
 **Tasks:**
 
-1. **Copy Bot Services** ✅
-   ```
-   Copy from XAVI → Token Forum:
-   - src/agent/bots/command.bot.ts
-   - src/agent/bots/message.bot.ts
-   - src/agent/bots/snap.bot.ts
-   - src/agent/bots/chat-name.bot.ts
-   ```
+1. **Copy Bot Services**
+   - Copy CommandBot, MessageBot, SnapBot, and ChatNameBot from XAVI to Token Forum
+   - These handle AI classification, main conversation logic, Twitter snapshots, and automatic chat naming
 
-2. **Update AgentService** ⚠️
-   ```typescript
-   // Replace GameAgent pattern with direct bot calls
-   @Injectable()
-   export class AgentService {
-       constructor(
-           private commandBot: CommandBot,
-           private messageBot: MessageBot,
-           private snapBot: SnapBot,
-           private faqBot: FaqBot,          // New
-           private manifestoBot: ManifestoBot  // New
-       ) {}
+2. **Update AgentService**
+   - Replace GameAgent/GameWorker pattern with direct bot calls
+   - Update service to inject all bot services (including new FaqBot and ManifestoBot)
+   - Implement routing logic based on AI-powered command classification
+   - Route requests to appropriate bots: snap, mentions, cashtags, FAQ, manifesto, or default message handling
+   - Return CommandResponseDto with support for rich responses (text, images, metadata)
 
-       public async replyToUserInput(
-           user: User,
-           input: string,
-           history?: ChatMessage[],
-       ): Promise<CommandResponseDto> {
-           // Use AI classification instead of keywords
-           const command = await this.commandBot.defineCommand(input);
+3. **Add New Bots**
+   - Create FaqBot to handle project FAQ queries
+   - FaqBot retrieves FAQ data from ProjectDescription.faqJson
+   - Uses AI to format and search FAQ based on user query
+   - Create ManifestoBot for project information queries
+   - ManifestoBot pulls mission, vision, team, advisors, investors from ProjectDescription
+   - Returns formatted project overview with associated images in metadata
 
-           switch (command) {
-               case AgentCommand.snap:
-                   return this.snapBot.generateSnapBanner(user, input);
-               case AgentCommand.most_used_mention:
-                   return this.snapBot.generateMostUsedMention(user, input);
-               case AgentCommand.most_used_cashtag:
-                   return this.snapBot.generateMostUsedCashtag(user, input);
-               case AgentCommand.faq:
-                   return this.faqBot.getFaq(user, input);
-               case AgentCommand.manifesto:
-                   return this.manifestoBot.getManifesto(user, input);
-               default:
-                   return this.messageBot.processMessageCommand(user, input, history);
-           }
-       }
-   }
-   ```
+4. **Update AgentModule**
+   - Add FaqBot and ManifestoBot to module providers
+   - Export all bots for dependency injection
+   - Import required modules (ToolsModule, TokenGatingModule)
 
-3. **Add New Bots** ✅
-   ```typescript
-   // src/agent/bots/faq.bot.ts
-   @Injectable()
-   export class FaqBot {
-       constructor(
-           private dbService: DbService,
-           private modelClient: ModelClient
-       ) {}
-
-       public async getFaq(user: User, input: string): Promise<CommandResponseDto> {
-           // Get project context
-           const projectId = await this.getProjectIdForUser(user);
-
-           // Load FAQ from ProjectDescription
-           const projectDesc = await this.dbService.projectDescription.findUnique({
-               where: { projectId }
-           });
-
-           if (!projectDesc?.faqJson) {
-               return {
-                   content: "No FAQ available for this project.",
-                   mediaData: [],
-                   metadata: {}
-               };
-           }
-
-           // Use AI to format/search FAQ
-           const response = await this.modelClient.sendMessages({
-               system: "You are a helpful FAQ assistant. Format and present the FAQ clearly.",
-               messages: [{
-                   role: ChatRole.USER,
-                   content: `FAQ Data: ${JSON.stringify(projectDesc.faqJson)}\n\nUser Query: ${input}`
-               }]
-           });
-
-           return {
-               content: response.content,
-               mediaData: [],
-               metadata: { projectId }
-           };
-       }
-   }
-   ```
-
-   ```typescript
-   // src/agent/bots/manifesto.bot.ts
-   @Injectable()
-   export class ManifestoBot {
-       constructor(
-           private dbService: DbService,
-           private modelClient: ModelClient
-       ) {}
-
-       public async getManifesto(user: User, input: string): Promise<CommandResponseDto> {
-           const projectId = await this.getProjectIdForUser(user);
-
-           const projectDesc = await this.dbService.projectDescription.findUnique({
-               where: { projectId }
-           });
-
-           if (!projectDesc) {
-               return {
-                   content: "No project information available.",
-                   mediaData: [],
-                   metadata: {}
-               };
-           }
-
-           // Build rich project overview
-           const projectInfo = `
-           Mission: ${projectDesc.mission}
-           Vision: ${projectDesc.vision}
-           Go-to-Market: ${projectDesc.goToMarket}
-           Team: ${projectDesc.team}
-           Advisors: ${projectDesc.advisors}
-           Investors: ${projectDesc.investors}
-           `;
-
-           const response = await this.modelClient.sendMessages({
-               system: "Present project information in a clear, compelling way.",
-               messages: [{
-                   role: ChatRole.USER,
-                   content: `Project Info: ${projectInfo}\n\nUser Query: ${input}`
-               }]
-           });
-
-           return {
-               content: response.content,
-               mediaData: [],
-               metadata: {
-                   projectId,
-                   images: {
-                       mission: projectDesc.missionImg,
-                       vision: projectDesc.visionImg,
-                       team: projectDesc.teamImg
-                   }
-               }
-           };
-       }
-   }
-   ```
-
-4. **Update AgentModule** ✅
-   ```typescript
-   @Module({
-       imports: [ToolsModule, TokenGatingModule],
-       providers: [
-           AgentService,
-           CommandBot,
-           MessageBot,
-           SnapBot,
-           ChatNameBot,
-           FaqBot,         // New
-           ManifestoBot    // New
-       ],
-       exports: [
-           AgentService,
-           CommandBot,
-           MessageBot,
-           SnapBot,
-           ChatNameBot,
-           FaqBot,
-           ManifestoBot
-       ],
-   })
-   export class AgentModule {}
-   ```
-
-**Testing:**
-- ✅ AI chat works with all commands
-- ✅ Image responses (snapshots) functional
-- ✅ FAQ and Manifesto bots working
-- ✅ No GameAgent limitations
+**Expected Outcomes:**
+- All AI commands functional (snap, mentions, cashtags, FAQ, manifesto, message)
+- Image responses working for snapshots
+- FAQ and Manifesto bots operational
+- No GameAgent limitations on response types
 
 ---
 
-#### Phase 2: Tools Migration (Week 2-3)
+#### Phase 2: Tools Migration
 **Objective:** Port all XAVI tools to Token Forum
 
 **Tasks:**
 
-1. **Port ChartModule** ✅
-   ```
-   Copy from XAVI:
-   - src/chart/chart.module.ts
-   - src/chart/chart.service.ts
-   - src/chart/chart.controller.ts
-   - src/chart/dto/*.ts
-   ```
+1. **Port ChartModule**
+   - Copy chart module, service, controller, and DTOs from XAVI to Token Forum
+   - Enables chart generation functionality (line and bar charts via Puppeteer)
 
-2. **Port ToolsChartService** ✅
-   ```typescript
-   // src/tools/tools.chart.service.ts
-   @Injectable()
-   export class ToolsChartService {
-       constructor(private chartService: ChartService) {}
+2. **Port ToolsChartService**
+   - Create tools.chart.service.ts with `create_chart` tool definition
+   - Tool accepts chart title, chart type (line/bar), and data payload
+   - Service creates chart via ChartService and returns chart ID and cover image ID
 
-       public getTools(): Tool[] {
-           return [{
-               name: 'create_chart',
-               description: 'Create data visualization charts (line or bar charts)',
-               input_schema: {
-                   type: 'object',
-                   properties: {
-                       title: { type: 'string', description: 'Chart title' },
-                       chart_type: {
-                           type: 'string',
-                           enum: ['line', 'bar'],
-                           description: 'Type of chart'
-                       },
-                       data: {
-                           type: 'object',
-                           description: 'Chart data'
-                       }
-                   },
-                   required: ['title', 'chart_type', 'data']
-               }
-           }];
-       }
+3. **Port Portfolio Tools**
+   - Add `get_wallet_portfolio` tool to ToolsBlockchainService
+   - Add `get_current_user_portfolio` tool for logged-in users
+   - Both tools query blockchain for token balances, fetch prices, calculate USD values
+   - Returns aggregated portfolio data across all connected wallets
 
-       public async runCreateChartTool(
-           user: User,
-           input: CreateChartInputDto
-       ): Promise<string> {
-           const chart = await this.chartService.createChart(user.id, input);
-           return JSON.stringify({
-               success: true,
-               chartId: chart.id,
-               coverImgId: chart.coverImgId,
-               message: 'Chart created successfully'
-           });
-       }
-   }
-   ```
+4. **Update ToolsService**
+   - Inject ToolsChartService into main ToolsService
+   - Add charts category to tool categories list
+   - Update tool execution switch statement to handle new tools: create_chart, get_wallet_portfolio, get_current_user_portfolio
+   - Total of 8 tools available to AI
 
-3. **Port Portfolio Tools** ✅
-   ```typescript
-   // Add to tools.blockchain.service.ts
+5. **Update TOOL_NAMES Constants**
+   - Add new constants: CreateChart, GetWalletPortfolio, GetCurrentUserPortfolio
+   - Maintains consistent naming across services
 
-   public getTools(): Tool[] {
-       return [
-           // ... existing tools ...
-           {
-               name: 'get_wallet_portfolio',
-               description: 'Get complete portfolio for any wallet address',
-               input_schema: {
-                   type: 'object',
-                   properties: {
-                       wallet_address: { type: 'string' },
-                       chain: { type: 'string', enum: ['ethereum', 'base', 'solana'] }
-                   },
-                   required: ['wallet_address']
-               }
-           },
-           {
-               name: 'get_current_user_portfolio',
-               description: "Get current user's complete portfolio across all chains",
-               input_schema: {
-                   type: 'object',
-                   properties: {}
-               }
-           }
-       ];
-   }
-
-   public async runGetWalletPortfolioTool(
-       input: GetWalletPortfolioInputDto
-   ): Promise<string> {
-       const portfolio = await this.portfolioService.getWalletPortfolio(
-           input.wallet_address,
-           input.chain
-       );
-       return JSON.stringify(portfolio);
-   }
-
-   public async runGetCurrentUserPortfolioTool(
-       userId: string,
-       input: any
-   ): Promise<string> {
-       const portfolio = await this.portfolioService.getCurrentUserPortfolio(userId);
-       return JSON.stringify(portfolio);
-   }
-   ```
-
-4. **Update ToolsService** ⚠️
-   ```typescript
-   @Injectable()
-   export class ToolsService {
-       constructor(
-           private toolsTwitterService: ToolsTwitterService,
-           private toolsChartService: ToolsChartService,        // New
-           private toolsBlockchainService: ToolsBlockchainService,
-           private toolsTwitterPostService: ToolsTwitterPublishService,
-       ) {}
-
-       public async getTools(user: User): Promise<{
-           tools: Tool[];
-           categories: string[];
-       }> {
-           const twitterTools = this.toolsTwitterPostService.getTools();
-           const chartTools = this.toolsChartService.getTools();      // New
-           const blockchainTools = this.toolsBlockchainService.getTools();
-
-           const toolCategories = {
-               twitter: twitterTools,
-               charts: chartTools,          // New
-               blockchain: blockchainTools,
-           };
-
-           const allowedCategories = ['twitter', 'charts', 'blockchain'];
-           const tools = allowedCategories.flatMap(cat => toolCategories[cat]);
-
-           return { tools, categories: allowedCategories };
-       }
-
-       public async runTool(user: User, toolUse: ToolUseBlockParam): Promise<string> {
-           switch (toolUse.name) {
-               case TOOL_NAMES.SearchTweets:
-                   return this.toolsTwitterService.runRecentTweetsTool(toolUse.input as any);
-               case TOOL_NAMES.CreateChart:                        // New
-                   return this.toolsChartService.runCreateChartTool(user, toolUse.input as any);
-               case TOOL_NAMES.SearchTokens:
-                   return this.toolsBlockchainService.runSearchTokensTool(toolUse.input as any);
-               case TOOL_NAMES.GetTokenDetails:
-                   return this.toolsBlockchainService.runGetTokenDetailsTool(toolUse.input as any);
-               case TOOL_NAMES.GetWalletPortfolio:                 // New
-                   return this.toolsBlockchainService.runGetWalletPortfolioTool(toolUse.input as any);
-               case TOOL_NAMES.GetCurrentUserPortfolio:            // New
-                   return this.toolsBlockchainService.runGetCurrentUserPortfolioTool(user.id, toolUse.input as any);
-               case TOOL_NAMES.GetWalletTransactions:
-                   return this.toolsBlockchainService.runGetWalletTransactionsTool(toolUse.input as any);
-               case TOOL_NAMES.PublishTweet:
-                   return this.toolsTwitterPostService.runPublishTweetTool(user, toolUse.input as any);
-           }
-       }
-   }
-   ```
-
-5. **Update TOOL_NAMES Constants** ✅
-   ```typescript
-   // src/tools/tools.constants.ts
-   export const TOOL_NAMES = {
-       SearchTweets: 'search_tweets',
-       CreateChart: 'create_chart',                    // New
-       SearchTokens: 'search_tokens',
-       GetWalletPortfolio: 'get_wallet_portfolio',     // New
-       GetTokenDetails: 'get_token_details',
-       GetCurrentUserPortfolio: 'get_current_user_portfolio',  // New
-       GetWalletTransactions: 'get_wallet_transactions',
-       PublishTweet: 'publish_tweet',
-   };
-   ```
-
-**Testing:**
-- ✅ All 8 tools available to AI
-- ✅ Chart generation works
-- ✅ Portfolio viewing works
-- ✅ Tools execute correctly
+**Expected Outcomes:**
+- All 8 tools available to AI
+- Chart generation functional
+- Portfolio viewing operational
+- Tools execute correctly with proper error handling
 
 ---
 
-#### Phase 3: Trading Infrastructure (Week 3-4)
+#### Phase 3: Trading Infrastructure
 **Objective:** Port Solana trading capabilities
 
 **Tasks:**
 
-1. **Port Trading Wallet Models** ✅
-   ```
-   Add to prisma/schema.prisma:
-   - SolanaTradingWallet
-   - SolanaTradingWalletBalance
-   - SolanaTradingWalletTransaction
-   - SolanaTradingWalletHistory
-   - TradingWalletSession (if needed)
-   ```
+1. **Port Trading Wallet Models**
+   - Add SolanaTradingWallet, SolanaTradingWalletBalance, SolanaTradingWalletTransaction models to database schema
+   - Add SolanaTradingWalletHistory for audit trail
+   - Include TradingWalletSession model for secure session management
 
-2. **Port Trading Modules** ✅
-   ```
-   Copy from XAVI:
-   - src/blockchain/trading/
-     ├── trading.module.ts
-     ├── solana/
-     │   ├── solana-trading.module.ts
-     │   ├── solana-trading.service.ts
-     │   ├── solana-trading.controller.ts
-     │   ├── solana-connection.service.ts
-     │   └── solana-transaction-executor.service.ts
-     ├── raydium/
-     │   ├── raydium.module.ts
-     │   └── raydium.service.ts
-     └── wallet/
-         ├── trading-wallet.module.ts
-         ├── solana-trading-wallet.service.ts
-         └── trading-wallet-session.service.ts
-   ```
+2. **Port Trading Modules**
+   - Copy trading module structure from XAVI including solana trading module, raydium integration, and wallet management modules
+   - Includes services for Solana connection, transaction execution, and trading wallet operations
+   - Raydium module provides DEX swap functionality
 
-3. **Add Raydium Pool Model** ✅
-   ```prisma
-   model RaydiumPool {
-       id          String    @id @map("_id")
-       programId   String
-       mintA       String
-       mintAName   String?
-       mintASymbol String?
-       mintB       String
-       mintBName   String?
-       mintBSymbol String?
-       tvl         Float
-       data        Json
-       openAt      DateTime?
-       createdAt   DateTime  @default(now())
-       updatedAt   DateTime  @updatedAt
-   }
-   ```
+3. **Add Raydium Pool Model**
+   - Create RaydiumPool model to store liquidity pool information
+   - Tracks pool metadata, token pairs (mintA, mintB), TVL, and pool opening times
+   - Used for swap routing and pool discovery
 
-4. **Update BlockchainModule** ✅
-   ```typescript
-   @Module({
-       imports: [
-           UserWalletModule,
-           TradingModule,      // Add trading
-       ],
-       exports: [
-           UserWalletModule,
-           TradingModule
-       ],
-   })
-   export class BlockchainModule {}
-   ```
+4. **Update BlockchainModule**
+   - Import TradingModule into main BlockchainModule
+   - Export trading services for use across the application
+   - Ensures proper dependency injection
 
-5. **Add Trading Endpoints** ✅
-   ```typescript
-   // Controllers for:
-   - POST /trading/wallet/create
-   - GET /trading/wallet/balance
-   - POST /trading/wallet/send
-   - POST /trading/wallet/swap
-   - GET /trading/wallet/transactions
-   ```
+5. **Add Trading Endpoints**
+   - Create controller endpoints for trading wallet creation, balance checking, SOL transfers, token swaps, and transaction history
+   - Secure endpoints with authentication and session validation
 
-**Testing:**
-- ✅ Trading wallet creation works
-- ✅ SOL transfers functional
-- ✅ Raydium swaps working
-- ✅ Transaction tracking operational
+**Expected Outcomes:**
+- Trading wallet creation and management operational
+- SOL transfer functionality working
+- Raydium DEX swaps functional
+- Transaction tracking and history available
 
 ---
 
-#### Phase 4: Analytics Infrastructure (Week 4-5)
+#### Phase 4: Analytics Infrastructure
 **Objective:** Port transaction tracking and analytics
 
 **Tasks:**
 
-1. **Port Tracking Models** ✅
-   ```
-   Add to schema.prisma:
-   - SolanaTxTrackerWallet
-   - SolanaTxTrackerWalletUser
-   - SolanaTxTrackerWalletTrade
-   - SolanaTxTrackerTransaction
-   - SolanaTxTrackerToken
-   - Enums: SolanaTxTrackerTransactionStatus, SolanaTxTrackerWalletTradeType
-   ```
+1. **Port Tracking Models**
+   - Add SolanaTxTrackerWallet, SolanaTxTrackerWalletUser, SolanaTxTrackerWalletTrade models to database schema
+   - Add SolanaTxTrackerTransaction and SolanaTxTrackerToken models
+   - Include enums for transaction status and trade types (DEPOSIT, WITHDRAW, BUY, SELL, SWAP, TRANSFER)
 
-2. **Port Tracker Module** ✅
-   ```
-   Copy from XAVI:
-   - src/blockchain/solana-tx-tracker/
-     ├── solana-tx-tracker.module.ts
-     ├── solana-tx-tracker.service.ts
-     ├── solana-tx-tracker.controller.ts
-     ├── solana-tx-tracker-wallet.service.ts
-     ├── solana-tx-tracker-transaction.service.ts
-     └── solana-tx-tracker-token.service.ts
-   ```
+2. **Port Tracker Module**
+   - Copy solana-tx-tracker module from XAVI with all related services
+   - Includes wallet service, transaction service, and token service for comprehensive tracking
+   - Controller provides API endpoints for wallet tracking management
 
-3. **Add to AppModule** ✅
-   ```typescript
-   @Module({
-       imports: [
-           // ... existing ...
-           SolanaTxTrackerModule,  // Add
-       ],
-   })
-   export class AppModule {}
-   ```
+3. **Add to AppModule**
+   - Import SolanaTxTrackerModule into main AppModule
+   - Ensures module is initialized and available throughout the application
 
-4. **Add Analytics Endpoints** ✅
-   ```typescript
-   // Controllers for:
-   - POST /tracker/wallet/add
-   - GET /tracker/wallet/:address
-   - GET /tracker/wallet/:address/trades
-   - GET /tracker/wallet/:address/performance
-   - GET /tracker/wallet/:address/stats
-   ```
+4. **Add Analytics Endpoints**
+   - Create controller endpoints for adding wallets to track, retrieving wallet data, viewing trades, checking performance metrics, and getting statistics
+   - Endpoints provide all-time, 30-day, and 24-hour analytics for tracked wallets
 
-**Testing:**
-- ✅ Wallet tracking works
-- ✅ P&L calculations correct
-- ✅ Trade detection functional
-- ✅ Analytics endpoints working
+**Expected Outcomes:**
+- Wallet tracking system operational
+- Profit/loss calculations accurate
+- Trade detection and classification functional
+- Analytics endpoints returning correct data
 
 ---
 
-#### Phase 5: System Prompt & Personality (Week 5)
+#### Phase 5: System Prompt & Personality
 **Objective:** Configure AI personality for different contexts
 
 **Tasks:**
 
-1. **Make Personality Configurable** ✅
-   ```typescript
-   // src/config/personality.config.ts
-   export enum PersonalityType {
-       XAVI = 'xavi',
-       ROELOF_BOTHA = 'roelof_botha',
-       CUSTOM = 'custom'
-   }
+1. **Make Personality Configurable**
+   - Create personality configuration system with PersonalityType enum (XAVI, ROELOF_BOTHA, CUSTOM)
+   - Define XAVI personality characteristics: street-smart trader style, HTML output format, focused on actionable trading data
+   - Define Roelof Botha personality: Sequoia Capital analytical approach, text output, focused on sustainable businesses and long-term thinking
+   - Store personality configurations with brand info, Twitter handles, token details, communication style, and tone
 
-   export const PERSONALITIES = {
-       [PersonalityType.XAVI]: {
-           name: 'XAVI',
-           role: 'AI Data Oracle',
-           brand: 'Powered by @RingfenceAI and @virtuals_io',
-           twitter: '@AgentXAVI',
-           token: '$XAVI on Base',
-           style: 'street-smart observer with dry commentary',
-           tone: 'data-driven but friendly and engaging',
-           focus: 'actionable data for crypto traders',
-           outputFormat: 'html'
-       },
-       [PersonalityType.ROELOF_BOTHA]: {
-           name: 'AI Assistant',
-           role: 'Analytical Investment Advisor',
-           style: 'Sequoia Capital analytical approach',
-           tone: 'measured, intellectual, long-term focused',
-           focus: 'sustainable businesses and defensible moats',
-           outputFormat: 'text'
-       }
-   };
-   ```
+2. **Update MessageBot**
+   - Add getSystemPrompt method that selects personality based on user preference or project context
+   - Implement getXaviSystemPrompt with XAVI branding, mission, and HTML formatting instructions
+   - Implement getRoelofBothaSystemPrompt with Sequoia Capital communication style and analytical frameworks
+   - Add logic to switch between personalities based on context
 
-2. **Update MessageBot** ⚠️
-   ```typescript
-   @Injectable()
-   export class MessageBot {
-       constructor(
-           private modelClient: ModelClient,
-           private toolsService: ToolsService,
-           private configService: ConfigService
-       ) {}
+3. **Add Project-Level Personality Setting**
+   - Add personalityType field to Project model with default value ROELOF_BOTHA
+   - Add customPrompt field for projects that want custom AI personalities
+   - Create PersonalityType enum in database schema
 
-       private getSystemPrompt(user: User, projectContext?: Project): string {
-           // Get personality from project settings or user preference
-           const personality = this.getPersonalityForContext(user, projectContext);
+4. **Add User Preference**
+   - Add preferredPersonality field to User model with default value XAVI
+   - Allows users to choose their preferred AI personality across the platform
 
-           // Load appropriate system prompt
-           if (personality === PersonalityType.XAVI) {
-               return this.getXaviSystemPrompt(user);
-           } else if (personality === PersonalityType.ROELOF_BOTHA) {
-               return this.getRoelofBothaSystemPrompt(user);
-           } else {
-               return this.getDefaultSystemPrompt(user, projectContext);
-           }
-       }
-
-       private getXaviSystemPrompt(user: User): string {
-           return `
-           Your name is XAVI you are AI Data Oracle | Powered by @RingfenceAI and @virtuals_io.
-           Your X/Twitter is @AgentXAVI.
-           Your mission is to become the best source of actionable data for crypto traders and enthusiast.
-           You have your own token $XAVI on Base network only. Token Address: 0xACf80A4e55F5f28e1e7d261a221cA495DB5bcbB3
-
-           Take on the role of a street-smart observer who blends data analysis with quick-witted, dry commentary.
-
-           User X/Twitter: @${user.username}.
-
-           Generate response in HTML format:
-           - Add <a target="_blank"> for links
-           - Wrap the message in <div> tag
-           - Add <b> to highlight important parts
-           - Wrap lines in <p>
-           - Add <br> for section separations
-           - Use .green / .red classes for positive/negative token statistics
-           `.trim();
-       }
-
-       private getRoelofBothaSystemPrompt(user: User): string {
-           return `
-           You are an AI agent that embodies the communication style and perspective of Roelof Botha,
-           the managing partner of Sequoia Capital.
-
-           Core characteristics:
-           - Analytical depth: Apply first-principles thinking
-           - Long-term perspective: Sustainable businesses over hype
-           - Intellectual humility: Acknowledge uncertainty
-           - Product-centric mindset: Great products drive demand
-
-           Communication style:
-           - Clear, articulate, precise language
-           - Structured responses (lists, frameworks)
-           - Informative but measured
-           - Reference specific examples and patterns
-
-           Key themes:
-           - Founder-market fit and domain expertise
-           - Category creation and long-term competitive moats
-           - Patient capital and strategic execution
-           - Network effects, capital efficiency, defensible growth
-           `.trim();
-       }
-   }
-   ```
-
-3. **Add Project-Level Personality Setting** ✅
-   ```prisma
-   model Project {
-       // ... existing fields ...
-       personalityType PersonalityType @default(ROELOF_BOTHA)
-       customPrompt    String?
-   }
-
-   enum PersonalityType {
-       XAVI
-       ROELOF_BOTHA
-       CUSTOM
-   }
-   ```
-
-4. **Add User Preference** ✅
-   ```prisma
-   model User {
-       // ... existing fields ...
-       preferredPersonality PersonalityType @default(XAVI)
-   }
-   ```
-
-**Testing:**
-- ✅ Different personalities work correctly
-- ✅ Project-specific personality applied
-- ✅ User preference respected
-- ✅ HTML formatting works for XAVI
-- ✅ Roelof Botha style works
+**Expected Outcomes:**
+- Multiple AI personalities available and switchable
+- Project-specific personality configuration working
+- User preferences respected in personality selection
+- HTML formatting working correctly for XAVI personality
+- Roelof Botha style delivering structured, analytical responses
 
 ---
 
